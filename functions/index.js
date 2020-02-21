@@ -1,5 +1,8 @@
 const sgMail = require("@sendgrid/mail");
 const functions = require("firebase-functions");
+const request = require("request-promise-native");
+
+const recaptchaSecret = functions.config().recaptcha.key;
 
 sgMail.setApiKey(functions.config().sendgrid_api.key);
 
@@ -47,14 +50,53 @@ async function saveDetails(data) {
 }
 
 exports.contactForm = functions.https.onRequest(async (req, res) => {
-  // Parse the body string into JSON
-  const data = JSON.parse(req.body);
+  try {
+    // Parse the body string into JSON
+    const data = JSON.parse(req.body);
 
-  await saveDetails(data);
-  await notifyTeam(data);
-  await notifyUser(data);
+    // Get the re captcha token for verification
+    const captchaToken = data["g-recaptcha-response"];
 
-  res.json({ success: true });
+    // Remove the captcha token to prevent it from being included in the contact request email
+    delete data["g-recaptcha-response"];
 
-  res.status(200).end();
+    if (!captchaToken) throw new Error("Invalid recaptcha token");
+
+    // Create the captcha verification URL with query parameters
+    const verifyURL = `https://www.google.com/recaptcha/api/siteverify?secret=${recaptchaSecret}&response=${captchaToken}`;
+
+    // If a remote ip is available, add it to the verifyURL
+    const remoteip = req.ip || req.connection.remoteAddress;
+    if (remoteip) verifyURL += `&remoteip=${remoteip}`;
+
+    /**
+     * Call the recaptcha API to verify the captcha token
+     *
+     * @example API response from captcha verification
+     * {
+     *   "success": true|false,
+     *   "challenge_ts": timestamp,  // timestamp of the challenge load (ISO format yyyy-MM-dd'T'HH:mm:ssZZ)
+     *   "hostname": string,         // the hostname of the site where the reCAPTCHA was solved
+     *   "error-codes": [...]        // optional
+     * }
+     */
+    const response = await request.post(verifyURL, {
+      headers: { "content-type": "application/JSON" },
+      json: true
+    });
+
+    if (!response.success) throw new Error(response["error-codes"]);
+
+    await saveDetails(data);
+    await notifyTeam(data);
+    await notifyUser(data);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
 });
