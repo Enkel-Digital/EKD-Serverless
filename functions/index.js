@@ -60,10 +60,11 @@ exports.contactForm = functions.https.onRequest(async (req, res) => {
     // Remove the captcha token to prevent it from being included in the contact request email
     delete data["g-recaptcha-response"];
 
-    if (!captchaToken) throw new Error("Invalid recaptcha token");
+    if (!captchaToken)
+      throw new Error(`Invalid recaptcha token - ${captchaToken}`);
 
     // Create the captcha verification URL with query parameters
-    const verifyURL = `https://www.google.com/recaptcha/api/siteverify?secret=${recaptchaSecret}&response=${captchaToken}`;
+    let verifyURL = `https://www.google.com/recaptcha/api/siteverify?secret=${recaptchaSecret}&response=${captchaToken}`;
 
     // If a remote ip is available, add it to the verifyURL
     const remoteip = req.ip || req.connection.remoteAddress;
