@@ -101,3 +101,5 @@ exports.contactForm = functions.https.onRequest(async (req, res) => {
     });
   }
 });
+
+exports.yuliGetInTouch = require("./yuli")
